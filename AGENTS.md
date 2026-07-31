@@ -1,123 +1,82 @@
-# QuizMaker Project Overview
+# AGENTS.md
 
-## Project Description
+Instructions for AI agents working in this repository. This file is loaded into every
+agent conversation, so it describes only what is stable and true of the project.
 
-QuizMaker is a quiz-creating application designed for teachers. The application allows educators to create quizzes with the assistance of an AI assistant that helps align quiz content with specific state standards (such as TEKS).
+## Project
 
-## Technology Stack
+<!--
+Replace this section during Sprint 1 with a short description of what you are building:
+the problem, the primary user, and the current state. Two or three sentences.
+Keep it current. An out-of-date description here misleads every future conversation.
+-->
 
-### Core Framework & Platform
+This is an unmodified AISprints starter. No application features have been built yet.
+The technical PRD in `ai-workspace/` is the source of truth for what is being built and
+for the current phase of work.
 
-- **Next.js 15.4.6** - React framework for building the application
-- **Cloudflare Workers** - Serverless deployment platform
-- **@opennextjs/cloudflare** - Integration layer for deploying Next.js to Cloudflare Workers
+## Stack
 
-### Database
+- **Next.js 16** with the App Router and React 19
+- **Cloudflare Workers** for hosting, via `@opennextjs/cloudflare`
+- **Tailwind CSS v4**, configured in CSS rather than a JS config file
+- **shadcn/ui** on Base UI, `base-nova` style, with Lucide icons
+- **TypeScript** in strict mode
+- **Wrangler** for Cloudflare configuration, secrets, and deployment
 
-- **Cloudflare D1** - SQLite database for data persistence
-  - Database Name: `quizmaker-app-database`
-  - Database ID: `370f62d7-ca2b-4667-97d8-f9fd97f7bc38`
-  - Binding: `quizmaker_app_database`
+No database, authentication, testing framework, or AI SDK is installed yet. Do not
+write code that imports one without adding it first and telling the user.
 
-### Styling & UI
-
-- **Tailwind CSS 4** - Utility-first CSS framework for styling
-- **Geist Fonts** - Modern typography (Geist Sans & Geist Mono)
-
-### Development Tools
-
-- **TypeScript** - Type safety and enhanced development experience
-- **Wrangler** - Cloudflare CLI tool for deployment and database management
-- **ESLint** - Code linting and formatting
-
-## Architecture
-
-### Deployment Configuration
-
-- **Platform**: Cloudflare Workers
-- **Runtime**: Node.js compatibility enabled
-- **Assets**: Static assets served via Cloudflare Workers
-- **Observability**: Enabled for monitoring and debugging
-
-### Database Migrations
-
-- **Tool**: Wrangler migrations commands
-- **Scope**: Both local and remote D1 database management
-- **Commands**:
-  - Create migrations: `wrangler d1 migrations create`
-  - List migrations: `wrangler d1 migrations list`
-  - Apply migrations: `wrangler d1 migrations apply`
-
-## Project Structure
+## Layout
 
 ```
-quizmaker-app/
-├── app/                    # Next.js app directory
-│   ├── globals.css        # Global styles with Tailwind CSS
-│   ├── layout.tsx         # Root layout component
-│   ├── page.tsx          # Home page component
-│   └── favicon.ico       # Site favicon
-├── docs/                  # Project documentation
-│   └── PROJECT_OVERVIEW.md # This file
-├── public/               # Static assets
-├── .dev.vars            # Local environment variables
-├── wrangler.jsonc       # Cloudflare Workers configuration
-├── cloudflare-env.d.ts  # TypeScript definitions for Cloudflare environment
-├── next.config.ts       # Next.js configuration
-├── open-next.config.ts  # OpenNext.js Cloudflare configuration
-├── tsconfig.json        # TypeScript configuration
-└── package.json         # Dependencies and scripts
+src/app/            Routes, layouts, and global styles (App Router)
+src/components/ui/  shadcn/ui components (generated; avoid hand-editing)
+src/lib/            Shared utilities and services
+ai-workspace/       Technical PRDs and planning documents
+.cursor/rules/      File-scoped conventions
+.cursor/skills/     Task-specific guidance loaded on demand
+public/             Static assets
 ```
 
-## Environment Configuration
+Import through the `@/` alias, which maps to `src/`.
 
-### Local Development
+## Commands
 
-- **Environment Variables**: Stored in `.dev.vars`
-- **Current Variables**:
-  - `NEXTJS_ENV=development`
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Local dev server on Node at `localhost:3000` |
+| `npm run preview` | Build and run on the local **Workers** runtime |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm run deploy` | Build and deploy to Cloudflare |
+| `npm run cf-typegen` | Regenerate `cloudflare-env.d.ts` after changing bindings |
 
-### Cloudflare Environment
+`npm run dev` runs on Node and will not surface Workers-specific problems. Verify
+anything runtime-sensitive with `npm run preview`.
 
-- **Configuration**: Managed via `wrangler.jsonc`
-- **Database Binding**: `quizmaker_app_database` → `quizmaker-app-database`
-- **Assets Binding**: `ASSETS` → `.open-next/assets`
+## Working agreements
 
-### TypeScript Environment
+- **Do not deploy.** Never run `npm run deploy` unless explicitly asked.
+- **Do not touch the remote database.** Migrations may be applied locally only.
+- **Ask before adding a dependency.** This is a teaching repository; an unexplained
+  dependency is a cost. Propose it and say why.
+- **Do not edit generated files.** `cloudflare-env.d.ts`, `next-env.d.ts`, and
+  `package-lock.json` are generated.
+- **Keep secrets out of the repo.** Local values belong in `.dev.vars`, which is
+  gitignored. When adding a variable, also add an empty placeholder to
+  `.dev.vars.example`. Production values go in `wrangler secret put`.
+- **Verify before claiming completion.** Run `npm run lint` and `npm run build` and
+  report the actual result. Do not describe work as done based on inspection alone.
+- **Say when you are unsure.** A flagged uncertainty is more useful than a confident
+  guess that has to be unwound later.
 
-- **Cloudflare Types**: Generated in `cloudflare-env.d.ts`
-- **Update Command**: `wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts`
+## Cursor Cloud specific instructions
 
-## Available Scripts
+Cloud agents have no Cloudflare credentials and no `.dev.vars`. In that environment:
 
-- `npm run dev` - Start development server with Turbopack
-- `npm run build` - Build the application
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run deploy` - Build and deploy to Cloudflare Workers
-- `npm run preview` - Build and preview locally
-- `npm run cf-typegen` - Generate Cloudflare TypeScript definitions
-
-## Key Features
-
-1. **Quiz Creation Interface** - Intuitive tools for teachers to create quizzes
-2. **AI Assistant Integration** - AI-powered assistance for content alignment
-3. **State Standards Compliance** - Support for various educational standards (e.g., TEKS)
-4. **Cloud-Native Architecture** - Built for scalability and reliability
-5. **Modern UI/UX** - Responsive design with Tailwind CSS
-
-## Development Workflow
-
-1. **Local Development**: Use `npm run dev` for local development
-2. **Database Changes**: Create and apply migrations using Wrangler commands
-3. **Deployment**: Use `npm run deploy` to deploy to Cloudflare Workers
-4. **Environment Updates**: Modify `.dev.vars` for local changes, use Wrangler secrets for production
-
-## Next Steps
-
-- Set up database schema and initial migrations
-- Implement quiz creation functionality
-- Integrate AI assistant for standards alignment
-- Design and implement user authentication
-- Create quiz management interface
-- Add quiz taking and grading capabilities
+- `npm run dev`, `npm run build`, and `npm run lint` work normally.
+- `npm run preview`, `npm run deploy`, and any `wrangler` command that needs
+  authentication will fail. This is expected. Do not try to authenticate.
+- If a task genuinely requires Cloudflare access, stop and report that it must be run
+  locally instead.

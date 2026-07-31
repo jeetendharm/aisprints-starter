@@ -10,7 +10,7 @@ You will need two accounts before you begin.
 
 ### Cloudflare Account
 
-Cloudflare is where your application will be deployed and hosted. It provides the database and serverless infrastructure for the QuizMaker app.
+Cloudflare is where your application will be deployed and hosted. It provides the serverless infrastructure, and later the database, for the app you build.
 
 - [ ] Go to [https://dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up)
 - [ ] Sign up using your Gmail account
@@ -38,7 +38,8 @@ Node.js is the JavaScript runtime needed to run the application locally.
   ```
   node --version
   ```
-  You should see a version number like `v20.x.x` or higher.
+  You need **v22 or higher**. Node 20 reached end-of-life in April 2026 and no longer
+  receives security patches, so upgrade if you see `v20.x.x` or lower.
 - [ ] Verify npm (Node's package manager) is also installed:
   ```
   npm --version
@@ -128,6 +129,23 @@ Now you will download your repository to your computer and open it in Cursor.
 - [ ] Navigate to and select the folder you just cloned
 - [ ] Cursor should now show all the project files in the left sidebar
 
+### Make the Project Yours
+
+The template ships with placeholder names and no local environment file. Fix both now,
+before you start building.
+
+- [ ] Open `package.json` and change `"name": "next"` to your project name, for example
+      `"name": "quizmaker"`
+- [ ] Open `wrangler.jsonc` and change `"name": "aisprints-starter"` to the same name.
+      This is the name your app will be deployed under on Cloudflare.
+- [ ] Create your local environment file by copying the example:
+  ```
+  cp .dev.vars.example .dev.vars
+  ```
+  On Windows PowerShell, use `Copy-Item .dev.vars.example .dev.vars`
+- [ ] Confirm `.dev.vars` is **not** tracked by git. It holds secrets and is
+      intentionally gitignored. Only `.dev.vars.example` should ever be committed.
+
 ---
 
 ## Section 5: Install Project Dependencies
@@ -154,7 +172,7 @@ Before starting any sprint work, confirm the application runs on your machine.
   ```
 - [ ] Wait for the output to show something like:
   ```
-  ▲ Next.js 15.x.x (turbopack)
+  ▲ Next.js 16.x.x (Turbopack)
   - Local: http://localhost:3000
   ```
 - [ ] Open your web browser and go to [http://localhost:3000](http://localhost:3000)
@@ -223,12 +241,17 @@ Take a moment to familiarize yourself with what is in the starter repository.
 
 | Folder/File | Purpose |
 |---|---|
-| `ai-workspace/` | PRDs, feature specs, and test plans that guide each sprint |
-| `.cursor/rules/` | Rules that guide the AI agent's behavior in Cursor |
-| `AGENTS.md` | Project overview and technology stack reference |
-| `docs/` | Templates for technical documentation |
+| `ai-workspace/` | PRDs and feature specs that guide each sprint |
+| `AGENTS.md` | Always-on agent instructions: stack, layout, and working agreements |
+| `.cursor/rules/` | Conventions that load when you touch matching files |
+| `.cursor/skills/` | Deeper guidance the agent pulls in when a task calls for it |
+| `.cursor/BUGBOT.md` | Checklist used when Bugbot reviews a pull request |
+| `src/app/` | Your routes and pages (Next.js App Router) |
+| `src/components/ui/` | shadcn/ui components, already installed |
+| `src/lib/` | Shared utilities and services |
 | `package.json` | Project dependencies and available scripts |
 | `wrangler.jsonc` | Cloudflare deployment configuration |
+| `.dev.vars` | Your local secrets (never committed) |
 
 ### Available Commands
 
@@ -236,8 +259,12 @@ Take a moment to familiarize yourself with what is in the starter repository.
 |---|---|
 | `npm run dev` | Start the app locally for development |
 | `npm run build` | Build the app for production |
-| `npm run preview` | Preview the production build locally |
+| `npm run lint` | Check code for problems |
+| `npm run preview` | Run the app on the local Cloudflare Workers runtime |
 | `npm run deploy` | Deploy the app to Cloudflare |
+
+`npm run dev` runs on Node, which is fast but does not behave exactly like Cloudflare.
+Use `npm run preview` to catch problems that only appear on the real runtime.
 
 ---
 
@@ -247,8 +274,10 @@ Before starting Sprint 1, confirm all of the following:
 
 - [ ] Cloudflare account created and accessible
 - [ ] GitHub account ready with your personal copy of the starter repo
-- [ ] Node.js and npm installed
+- [ ] Node.js v22 or higher, and npm, installed
 - [ ] Git installed
+- [ ] Project renamed in `package.json` and `wrangler.jsonc`
+- [ ] `.dev.vars` created from `.dev.vars.example`
 - [ ] Cursor IDE installed and opens successfully
 - [ ] Superwhisper installed and working with Cursor
 - [ ] Repository cloned and opened in Cursor
@@ -264,9 +293,18 @@ Before starting Sprint 1, confirm all of the following:
 
 ### `npm install` fails with permission errors
 
-Try running with elevated permissions:
-- **Mac/Linux**: `sudo npm install`
-- **Windows**: Run your terminal as Administrator
+Do not run `sudo npm install`. It creates root-owned files inside your project and
+usually causes worse failures later.
+
+The usual cause is a Node installation owned by root. The reliable fix is to manage Node
+with a version manager instead:
+
+- **Mac/Linux**: install [nvm](https://github.com/nvm-sh/nvm), then run `nvm install --lts`
+  and `nvm use --lts`
+- **Windows**: reinstall Node from [nodejs.org](https://nodejs.org) using the official
+  installer
+
+Then delete `node_modules` and run `npm install` again.
 
 ### `npm run dev` shows "port already in use"
 

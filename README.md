@@ -1,58 +1,62 @@
 # AISprints Starter
 
-This repository is a starter template for aisprints. It is designed for experienced human programmers who are well-versed in end-to-end software development to use AI effectively for developing and maintaining software applications.
+A starter template for AISprints. It is aimed at experienced developers who want to use
+AI agents effectively for building and maintaining real software, rather than as an
+autocomplete.
 
-## Purpose
+New here? Follow [SETUP.md](./SETUP.md) first.
 
-This starter provides a structured approach to AI-assisted development by offering:
+## What this gives you
 
-- **Cursor Rules** (`AGENTS.md` and `.cursor\rules`) - Intended to create and maintain comprehensive guidelines and constraints that guide AI behavior during development
-- **Technical PRD Templates** (`docs/TECHNICAL_PRD_TEMPLATE.md`) - Standardized templates for documenting technical product requirements, implementation phases, and progress tracking
+Two things, beyond a working application skeleton:
 
-These resources ensure that AI agents are guided and constrained by established rules and your specific directions, enabling more predictable and maintainable development workflows.
+- **A configured agent context.** `AGENTS.md`, scoped rules in `.cursor/rules/`, on-demand
+  skills in `.cursor/skills/`, and PR review rules in `.cursor/BUGBOT.md`. Together these
+  constrain the agent to this project's stack and conventions instead of generic defaults.
+- **A technical PRD template.** `ai-workspace/TEMPLATE_TECHNICAL_PRD.md` structures a
+  feature into scope, phases, and acceptance criteria that both you and the agent work from.
 
-## Getting Started
+## Stack
 
-1. Review the cursor rules in `AGENTS.md` to understand the development guidelines
-2. Use the technical PRD template in `docs/TECHNICAL_PRD_TEMPLATE.md` when starting new features
-3. Customize the rules and templates to match your project's specific needs
+- [Next.js 16](https://nextjs.org) with the App Router and React 19
+- [Cloudflare Workers](https://workers.cloudflare.com) via [OpenNext](https://opennext.js.org/cloudflare)
+- [Tailwind CSS v4](https://tailwindcss.com)
+- [shadcn/ui](https://ui.shadcn.com) on Base UI
+- TypeScript in strict mode
 
-## Project Structure
+## Commands
 
-- `AGENTS.md` - Cursor rules and development guidelines
-- `docs/TECHNICAL_PRD_TEMPLATE.md` - Template for technical product requirement documents
-- `docs/PROJECT_OVERVIEW.md` - Project-specific documentation
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server on Node at [localhost:3000](http://localhost:3000) |
+| `npm run preview` | Build and run on the local Cloudflare Workers runtime |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm run deploy` | Deploy to Cloudflare |
+| `npm run cf-typegen` | Regenerate Cloudflare binding types |
 
-## Technology Stack
+`npm run dev` runs on Node, so it will not catch Workers-specific problems. Use
+`npm run preview` before deploying.
 
-This starter is built on:
+## How the agent context fits together
 
-- [Next.js](https://nextjs.org) - React framework
-- [Cloudflare Workers](https://workers.cloudflare.com) - Serverless deployment platform
-- [OpenNext.js](https://opennext.js.org/cloudflare) - Next.js adapter for Cloudflare
+| Path | Loaded | Purpose |
+|---|---|---|
+| `AGENTS.md` | Every conversation | Stack, layout, commands, working agreements |
+| `.cursor/rules/*.mdc` | When matching files are touched | Conventions for Next.js, Cloudflare, D1, Tailwind, shadcn |
+| `.cursor/skills/*/SKILL.md` | When the agent judges them relevant | Deeper guidance for the AI SDK and testing |
+| `.cursor/BUGBOT.md` | Bugbot PR reviews | Review checklist (project rules do **not** reach Bugbot) |
+| `.cursorignore` | Always | Hides `.dev.vars` and local Wrangler state from the agent |
 
-## Development
+Keep these current as your project grows. Stale instructions are worse than none, because
+the agent follows them confidently.
 
-Run the Next.js development server:
+## Adding UI components
+
+shadcn/ui is already initialized. Add components with the `@shadcn/` namespace:
 
 ```bash
-npm run dev
+npx shadcn@latest add @shadcn/select
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-## Preview
-
-Preview the application locally on the Cloudflare runtime:
-
-```bash
-npm run preview
-```
-
-## Deploy
-
-Deploy the application to Cloudflare:
-
-```bash
-npm run deploy
-```
+Already installed: `badge` `button` `card` `dialog` `field` `input` `label` `separator` `table`

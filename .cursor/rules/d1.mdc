@@ -1,31 +1,44 @@
 ---
-alwaysApply: true
+description: Cloudflare D1 database access and migration conventions
+globs: migrations/**,src/lib/**,wrangler.jsonc
+alwaysApply: false
 ---
 
-# D1 Database Access Rules
+# Cloudflare D1
 
-## D1 Best Practices
+D1 is Cloudflare's SQLite database. **This starter has no D1 database configured yet.**
+The conventions below apply once one is added, and describe how to add it.
 
-- **Access:** The D1 database binding `DB` is accessible via the `env` object. For example: `const { results } = await env.DB.prepare(...)`.
-- **SQL Best Practices:** Use prepared statements to prevent SQL injection vulnerabilities.
-- **Client:** All D1 interactions should go through the `lib/d1-client.ts` module to centralize data access logic.
+## Adding D1 to the project
 
-## Database Migrations
+1. Create the database: `npx wrangler d1 create <name>`
+2. Add the returned `d1_databases` block to `wrangler.jsonc` with binding `DB`.
+3. Run `npm run cf-typegen` so `env.DB` becomes typed.
 
-- **Migration Tool:** Use Wrangler commands for all database schema changes and migrations.
-- **Commands:**
-  - Create migrations: `wrangler d1 migrations create`
-  - List migrations: `wrangler d1 migrations list`
-  - Apply migrations: `wrangler d1 migrations apply`
-- **Scope:** Migrations apply to both local and remote D1 databases. However, you MUST NOT apply any migrations to reote databases.
-- **Best Practice:** Always create migrations for schema changes rather than manual SQL execution.
+## Access
 
-## Parameter Binding Rules (IMPORTANT)
+- Reach the binding through `getCloudflareContext()` from `@opennextjs/cloudflare`,
+  then use `env.DB`.
+- Centralize queries in `src/lib/` rather than calling `env.DB` from components or
+  route handlers directly. Create the module the first time it is needed instead of
+  assuming one already exists.
+- D1 is only reachable from server code. Never import a database module into a
+  component marked `'use client'`.
 
-- **Positional placeholders required:** To avoid D1 binding errors in local development, always normalize anonymous placeholders `?` to positional placeholders `?1`, `?2`, ... before binding parameters.
-- **Use shared helpers:** Always use the helpers in `lib/d1-client.ts` (`executeQuery`, `executeQueryFirst`, `executeMutation`, `executeBatch`) which:
-  - Normalize `?` → `?1`, `?2`, ... automatically
-  - Bind parameters safely
-  - Include a safe fallback for wrangler-dev binding quirks
-- **Single-row queries:** Prefer `executeQueryFirst` (internally uses `all()` + first row) rather than calling `stmt.first()` directly.
-- **Do NOT inline manually:** Do not hand-concatenate SQL with user input. If a fallback inline is ever needed, rely on the library’s built-in escape routine only.
+## Writing queries
+
+- Always use prepared statements with bound parameters. Never build SQL by
+  concatenating user input.
+- Prefer numbered placeholders (`?1`, `?2`) over anonymous `?`. Mixing styles or relying
+  on anonymous placeholders triggers binding errors in local Wrangler.
+- `all()` returns `{ results }`. Prefer reading the first element of `results` over
+  `first()`, which behaves inconsistently across local and remote.
+
+## Migrations
+
+- Every schema change is a migration. Do not alter the schema with ad-hoc SQL.
+- Create with `npx wrangler d1 migrations create <db> <description>`.
+- List with `npx wrangler d1 migrations list <db>`.
+- Apply locally with `npx wrangler d1 migrations apply <db> --local`.
+- **Never apply migrations to the remote database.** Do not run `migrations apply` with
+  `--remote`. Remote schema changes are the user's decision to make and execute.
