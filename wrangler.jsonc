@@ -17,7 +17,20 @@
 	},
 	"observability": {
 		"enabled": true
-	}
+	},
+	/**
+	 * Local D1 binding. database_id is a placeholder until a remote database
+	 * is created with `npx wrangler d1 create quizmaker`. Migrations are
+	 * applied locally only.
+	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "quizmaker",
+			"database_id": "00000000-0000-4000-8000-000000000001",
+			"migrations_dir": "./migrations"
+		}
+	]
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
