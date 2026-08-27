@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": {
+    "plugins": [],
+    "types": ["../../../../cloudflare-env.d.ts", "node"]
+  },
+  "include": ["./**/*.ts"]
+}

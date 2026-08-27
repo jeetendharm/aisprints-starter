@@ -401,7 +401,7 @@ These tests fail until the migration and binding exist. That is the intended red
 - Added `zod` and `server-only`. Tests mock `server-only` and `src/lib/db.ts` (no live D1)
 - No new migration. No deploy
 
-### Phase 3: Auth endpoints and session - PLANNED
+### Phase 3: Auth endpoints and session - COMPLETED
 
 **Objective**: Register, login, and logout work over HTTP POST.
 
@@ -455,8 +455,17 @@ Call the exported `POST` handlers with a `Request`. Do not spin up Next.js.
 - JSON contracts as specified above
 
 **Phase complete when**:
-- [ ] `npm test` green (including session + three handlers)
-- [ ] Register/login/logout match the API contracts, including 400/401/409
+- [x] `npm test` green (including session + three handlers)
+- [x] Register/login/logout match the API contracts, including 400/401/409
+
+**Implementation notes (2026-08-27)**:
+- TDD: Phase 3 tests failed first (missing `session.ts` and route files), then `npm test` passed 37/37
+- Cookie name: `qm_session`. HMAC-SHA-256 signed `{ userId, exp }`, 7-day `Max-Age`, `HttpOnly; Path=/; SameSite=Lax`. `Secure` only in production
+- `POST /api/auth/register` hashes then `userService.create`; 201 + session cookie + `redirectTo: "/mcqs"`; 400 validation; 409 `UniqueConstraintError`
+- `POST /api/auth/login` uses `getByUsername` + `verifyPassword`; 200 + cookie; 401 generic message; 400 invalid body
+- `POST /api/auth/logout` clears the cookie and returns 200 even with no cookie
+- Route tests mock user service, password, and session. Session tests use the real signer with `SESSION_SECRET`
+- No new migration. No deploy
 
 ### Phase 4: Pages and gating - PLANNED
 
@@ -554,11 +563,15 @@ Mock `fetch` and the Next.js router. Query by role and accessible name. Use `use
 - `src/lib/auth-guards.test.ts` — Phase 4: session gating
 - `src/lib/db.ts` — obtain `env.DB` via `getCloudflareContext()`; the only place that talks to the binding
 - `src/app/api/auth/register/route.ts` — register endpoint
+- `src/app/api/auth/register/handler.ts` — register POST handler (imported by tests)
 - `src/app/api/auth/register/route.test.ts` — Phase 3
+- `src/app/api/auth/tsconfig.json` — disables the Next TS plugin so colocated route tests resolve `@/`
 - `src/app/api/auth/login/route.ts` — login endpoint
-- `src/app/api/auth/login/route.test.ts` — Phase 3
+- `src/app/api/auth/login/handler.ts` — login POST handler
+- `src/lib/auth/login-route.test.ts` — Phase 3
 - `src/app/api/auth/logout/route.ts` — logout endpoint
-- `src/app/api/auth/logout/route.test.ts` — Phase 3
+- `src/app/api/auth/logout/handler.ts` — logout POST handler
+- `src/lib/auth/logout-route.test.ts` — Phase 3
 - `src/components/auth/register-form.tsx` / `register-form.test.tsx` — Phase 4
 - `src/components/auth/login-form.tsx` / `login-form.test.tsx` — Phase 4
 - `src/components/auth/logout-button.tsx` / `logout-button.test.tsx` — Phase 4
@@ -862,6 +875,6 @@ When working with this PRD:
 ## Current Status
 
 **Last Updated**: 2026-08-27
-**Current Phase**: Phase 2 - User service
-**Status**: COMPLETED — reviewed and committing to `feature/login-logout`
-**Next Steps**: Start Phase 3 (auth endpoints) with failing tests first when directed. Do not create migrations or deploy.
+**Current Phase**: Phase 3 - Auth endpoints and session
+**Status**: COMPLETED — committing to `feature/login-logout`
+**Next Steps**: Start Phase 4 (pages and gating) with failing tests first when directed. Do not create migrations or deploy.
