@@ -986,5 +986,5 @@ When working with this PRD:
 
 **Last Updated**: 2026-08-27
 **Current Phase**: Phase 5 - Verify
-**Status**: COMPLETED — identity feature implemented and verified locally (register, login, logout, gated `/mcqs`). `npm test` 51/51
+**Status**: COMPLETED — identity feature implemented and verified locally (register, login, logout, gated `/mcqs`). `npm test` 51/51. Production `npm run build` was not re-run for this close-out.
 **Next Steps**: This PRD is closed. Do not create migrations or deploy. Next product work is the MCQ test bank, not more identity.
