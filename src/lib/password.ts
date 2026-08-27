@@ -30,6 +30,13 @@ function timingSafeEqual(left: Uint8Array, right: Uint8Array): boolean {
 	return diff === 0;
 }
 
+/** WebCrypto BufferSource rejects Uint8Array<ArrayBufferLike> under TypeScript 5.9 / Node 24. */
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+	const copy = new ArrayBuffer(bytes.byteLength);
+	new Uint8Array(copy).set(bytes);
+	return copy;
+}
+
 async function deriveKey(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
 	const keyMaterial = await crypto.subtle.importKey(
 		"raw",
@@ -43,7 +50,7 @@ async function deriveKey(password: string, salt: Uint8Array, iterations: number)
 		{
 			name: "PBKDF2",
 			hash: "SHA-256",
-			salt,
+			salt: toArrayBuffer(salt),
 			iterations,
 		},
 		keyMaterial,

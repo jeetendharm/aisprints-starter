@@ -1,5 +1,5 @@
 Date created: 2026-08-24
-Date last modified: 2026-08-24
+Date last modified: 2026-08-27
 
 # Login, Logout, and Registration - Technical PRD
 
@@ -7,13 +7,15 @@ Date last modified: 2026-08-24
 
 QuizMaker is a greenfield application. The long-term product is a shared multiple-choice question (MCQ) test bank that several teachers can collaborate on. Before any of that work can exist, teachers need accounts: they must be able to register, log in, and log out so that later question work can be attributed to a real user.
 
-Today the starter has no database, no authentication, and no application pages. Anyone who opens the app sees the default Next.js landing page, and there is no way to create or identify a teacher. This phase solves that identity problem only. MCQ authoring is deferred.
+**Current state (2026-08-27):** that identity layer is implemented and verified locally. Teachers can open `/login` (also via `/`), register, log in, reach the `/mcqs` stub, and log out. MCQ authoring is still deferred.
 
 ---
 
 ## Hypothesis
 
 We believe that adding a D1-backed user table, a user service, and HTTP endpoints for register, login, and logout will let multiple teachers create accounts and reach a shared authenticated area, which is the foundation for a collaborative MCQ test bank.
+
+**Outcome:** teachers can create an account, obtain an HTTP-only session, use the gated stub, and end the session. The MCQ test bank itself is not in this feature.
 
 ---
 
@@ -59,9 +61,11 @@ We believe that adding a D1-backed user table, a user service, and HTTP endpoint
 
 ### Database Schema
 
-D1 is not configured yet. Create a D1 database (suggested name: `quizmaker`), bind it as `DB` in `wrangler.jsonc`, run `npm run cf-typegen`, then add the migration below. Apply migrations locally only (`npx wrangler d1 migrations apply quizmaker --local`). Never apply to remote unless the user explicitly asks.
+D1 is bound as `DB` in `wrangler.jsonc` to database `quizmaker` (`database_id` `549fc6c8-2285-4a88-8984-b0d6ab50e684`). Migrations live in `migrations/` and were applied locally only (`npx wrangler d1 migrations apply quizmaker --local`). Never apply to remote unless the user explicitly asks.
 
 `UNIQUE` on `username` and `email` also creates indexes in SQLite, so extra indexes are not required.
+
+Implemented migration: `migrations/0001_create_users.sql`.
 
 ```sql
 CREATE TABLE users (
@@ -202,10 +206,19 @@ Logout is idempotent: calling it with no cookie still returns 200.
 
 Use existing shadcn/ui pieces: `button`, `card`, `field`, `input`, `label`. Do not add `react-hook-form`. Client forms POST JSON to the endpoints above with `fetch`, then `router.push` to `redirectTo`. Surface API error messages on the form.
 
+Register and login UI start from the official shadcn **signup** and **login** blocks (centered `min-h-svh` page + Card form). Adapt those blocks to this product; do not keep the block’s email-only login, single full-name field, Google buttons, or forgot-password link.
+
+**Adaptations from the shadcn blocks:**
+- Login is **username + password**, not email
+- Register uses **first name and last name** (not one full-name field), plus **username**, email, password, and confirm password
+- Confirm password is client-only and is not sent to the API
+- No OAuth / Google buttons in this phase
+- Forms live at `src/components/auth/login-form.tsx` and `src/components/auth/register-form.tsx` (not `@/components/login-form`)
+- Pages at `/login` and `/register` keep the block layout: centered card, `max-w-sm`
+- Styling is Tailwind via the existing shadcn `base-nova` components; do not add a separate CSS module
+
 #### Landing (`/`)
-- Replace the Next.js starter page
-- Short product name and one-line description: a collaborative MCQ test bank for teachers
-- Links/buttons to `/register` and `/login`
+- Unauthenticated visits redirect to `/login` (login page links to `/register`)
 - If a valid session exists, redirect to `/mcqs`
 
 #### Register (`/register`)
@@ -236,6 +249,64 @@ Use existing shadcn/ui pieces: `button`, `card`, `field`, `input`, `label`. Do n
 - Display the signed-in teacher's first name (and username if useful)
 - Logout control that POST `/api/auth/logout` then navigates to `/login`
 - No question forms, lists, or CRUD
+
+### Implemented architecture (as of 2026-08-27)
+
+This is the record of what shipped. File paths are the source of truth; line numbers are from this date.
+
+**Runtime:** Next.js 16 App Router on Cloudflare Workers via `@opennextjs/cloudflare`. `next.config.ts:15-16` calls `initOpenNextCloudflareForDev()` so `npm run dev` can read D1 and `.dev.vars`. Bindings are not on `process.env`; `src/lib/cloudflare-env.ts:4-10` copies `SESSION_SECRET` from Cloudflare env onto `process.env` before session helpers run.
+
+**Persistence**
+- `wrangler.jsonc:25-31` — `d1_databases` binding `DB` → `quizmaker`
+- `migrations/0001_create_users.sql:3-12` — `users` table
+- `src/lib/db.ts:4-9` — `getDb()` returns `env.DB` or throws if the binding is missing
+- `src/lib/services/users.ts` — `userService.create | getById | getByUsername | update | delete` (`src/lib/services/users.ts:217-223`). Public methods return `PublicUser` (no hash). `getByUsername` returns `UserRecord` with `passwordHash` for login. Duplicate identity throws `UniqueConstraintError` (`src/lib/services/users.ts:5-9`)
+- Inserts use numbered placeholders, e.g. `src/lib/services/users.ts:119-124`
+
+**Passwords**
+- `src/lib/password.ts:3-6` — PBKDF2-SHA-256, 100_000 iterations, 16-byte salt, prefix `pbkdf2`
+- Stored form: `pbkdf2$iterations$salt$hash` (salt and hash base64) via `hashPassword` (`src/lib/password.ts:63-67`)
+- `verifyPassword` (`src/lib/password.ts:69-88`) re-derives with the stored salt and compares in constant time
+- Hashing is server-only, after HTTPS POST, in the register/login handlers — not in the browser
+- `toArrayBuffer` (`src/lib/password.ts:34-38`) copies the salt so WebCrypto accepts it under TypeScript 5.9 / Node 24 `BufferSource`
+
+**Session**
+- Cookie name `qm_session`, 7-day `Max-Age` (`src/lib/session.ts:4-5`)
+- Value: HMAC-SHA-256 over base64url `{ userId, exp }` using `SESSION_SECRET` (`src/lib/session.ts:59-69`)
+- Attributes: `Path=/; HttpOnly; SameSite=Lax`; `Secure` only when `NODE_ENV === "production"` (`src/lib/session.ts:44-57`)
+- `readSessionUserId` (`src/lib/session.ts:72-109`) returns null for missing, tampered, or expired cookies
+- `clearSessionCookie` (`src/lib/session.ts:111-113`) sets `Max-Age=0`
+- Pages call `getSessionUserId` (`src/lib/current-session.ts:6-11`), which loads Cloudflare env then reads `cookies()`
+
+**HTTP APIs** — logic lives in `handler.ts`; `route.ts` only re-exports `POST` so Next’s special `route.ts` file is not imported by tests (`src/app/api/auth/register/route.ts:1`)
+- `src/app/api/auth/register/handler.ts:30-65` — Zod validate, hash, `userService.create`, 201 + cookie + `redirectTo: "/mcqs"`; 400 / 409 / 500
+- `src/app/api/auth/login/handler.ts:22-54` — Zod validate, `getByUsername` + `verifyPassword`, 200 + cookie; 401 `"Invalid username or password."`; 400 / 500. Username case is normalized in `getByUsername` (`src/lib/services/users.ts:147-152`)
+- `src/app/api/auth/logout/handler.ts:3-11` — 200 `{ redirectTo: "/login" }` and expired cookie; idempotent
+
+**Guards and pages**
+- `src/lib/auth-guards.ts:1-11` — `requireSessionRedirect` → `/login`; `redirectIfAuthenticated` → `/mcqs`; `landingRedirect` → `/login` or `/mcqs`
+- `src/app/page.tsx:5-7` — `/` always redirects (login if anonymous, `/mcqs` if signed in)
+- `src/app/login/page.tsx:6-11` / `src/app/register/page.tsx` — signed-in users redirect to `/mcqs`; otherwise render the shadcn card
+- `src/app/mcqs/page.tsx:7-17` — no session or missing user → `/login`; otherwise “Question bank” stub + first name/username + logout
+- `src/app/layout.tsx:15-17` — document title `QuizMaker`
+
+**UI (shadcn `base-nova` + Tailwind)** — official login/signup blocks, adapted
+- `src/components/auth/login-form.tsx` — username + password; POST `/api/auth/login`; link to `/register`; no Google / forgot-password
+- `src/components/auth/register-form.tsx` — first name, last name, username, email, password, confirm password; confirm is client-only; POST `/api/auth/register` without `confirmPassword`
+- `src/components/auth/logout-button.tsx` — POST `/api/auth/logout` then `router.push` to `/login`
+- Primitives: `src/components/ui/button.tsx`, `card.tsx`, `field.tsx`, `input.tsx`, `label.tsx`
+
+**Tests (Vitest, jsdom, `@/` via `vite-tsconfig-paths`)**
+- `vitest.config.ts:5-10`
+- Phase 1: `src/lib/users-schema.test.ts`, `src/lib/d1-binding.test.ts`
+- Phase 2: `src/lib/password.test.ts`, `src/lib/services/users.test.ts` (mocks `src/lib/db.ts`)
+- Phase 3: `src/lib/session.test.ts`; register `src/app/api/auth/register/route.test.ts`; login `src/lib/auth/login-route.test.ts`; logout `src/lib/auth/logout-route.test.ts`. Handlers imported, not `route.ts`. `src/app/api/auth/tsconfig.json` turns off the Next TS plugin so colocated `@/` imports resolve
+- Phase 4: `src/lib/auth-guards.test.ts`; `src/components/auth/*.test.tsx` mock `fetch` and `next/navigation`
+- Suite as of 2026-08-27: **51 passed / 51** (`npm test`)
+
+**Secrets**
+- `.dev.vars` (gitignored) holds the real `SESSION_SECRET`
+- `.dev.vars.example:3` is an empty placeholder
 
 ---
 
@@ -339,12 +410,10 @@ These tests fail until the migration and binding exist. That is the intended red
 - [x] `npm test` green (schema + binding tests)
 - [x] Local D1 exists, is bound as `DB`, and the migration applies locally
 
-**Implementation notes (2026-08-24)**:
+**Implementation notes (2026-08-27)**:
 - TDD: 6 tests failed first (no `migrations/` dir, no `d1_databases` binding), then passed after the migration and binding
 - Migration file: `migrations/0001_create_users.sql`
-- `wrangler.jsonc` binds `DB` → database name `quizmaker`
-- Remote `wrangler d1 create` was not run. `database_id` is the local placeholder `00000000-0000-4000-8000-000000000001`. Replace it with the real UUID after `npx wrangler d1 create quizmaker` when a remote database is wanted
-- Local apply: `npx wrangler d1 migrations apply quizmaker --local` — succeeded; `PRAGMA table_info(users)` shows the expected columns
+- `wrangler.jsonc:25-31` binds `DB` → database name `quizmaker`, remote id `549fc6c8-2285-4a88-8984-b0d6ab50e684` (APAC). Migrations were applied **locally only**
 - `SESSION_SECRET` placeholder added to `.dev.vars.example`; a real value is in gitignored `.dev.vars`
 - `npm run cf-typegen` typed `env.DB` as `D1Database`
 
@@ -395,7 +464,7 @@ These tests fail until the migration and binding exist. That is the intended red
 **Implementation notes (2026-08-27)**:
 - TDD: Phase 2 tests failed first (missing `@/lib/password` and `@/lib/db`), then `npm test` passed 19/19
 - `src/lib/password.ts` — PBKDF2-SHA-256, 100_000 iterations, per-hash salt, stored as `pbkdf2$iterations$salt$hash`
-- `src/lib/db.ts` — `getDb()` via `getCloudflareContext().env.DB`
+- `src/lib/db.ts` — `getDb()` via `getCloudflareEnv()` (`src/lib/cloudflare-env.ts`), which uses `getCloudflareContext({ async: true })`
 - `src/lib/services/users.ts` — `userService.create | getById | getByUsername | update | delete`; `getByUsername` returns `UserRecord` with `passwordHash`; other methods return `PublicUser` without it
 - Duplicate username/email throws `UniqueConstraintError`
 - Added `zod` and `server-only`. Tests mock `server-only` and `src/lib/db.ts` (no live D1)
@@ -459,15 +528,15 @@ Call the exported `POST` handlers with a `Request`. Do not spin up Next.js.
 - [x] Register/login/logout match the API contracts, including 400/401/409
 
 **Implementation notes (2026-08-27)**:
-- TDD: Phase 3 tests failed first (missing `session.ts` and route files), then `npm test` passed 37/37
-- Cookie name: `qm_session`. HMAC-SHA-256 signed `{ userId, exp }`, 7-day `Max-Age`, `HttpOnly; Path=/; SameSite=Lax`. `Secure` only in production
-- `POST /api/auth/register` hashes then `userService.create`; 201 + session cookie + `redirectTo: "/mcqs"`; 400 validation; 409 `UniqueConstraintError`
-- `POST /api/auth/login` uses `getByUsername` + `verifyPassword`; 200 + cookie; 401 generic message; 400 invalid body
-- `POST /api/auth/logout` clears the cookie and returns 200 even with no cookie
+- TDD: Phase 3 tests failed first (missing `session.ts` and route files), then the handler suite went green (37 tests at end of Phase 3; 51 for the full suite after Phase 4)
+- Cookie name: `qm_session`. HMAC-SHA-256 signed `{ userId, exp }`, 7-day `Max-Age`, `HttpOnly; Path=/; SameSite=Lax`. `Secure` only in production (`src/lib/session.ts:4-5`, `src/lib/session.ts:44-69`)
+- Route **logic** is in `handler.ts`; `route.ts` re-exports `POST` so tests do not import Next’s special `route.ts` module
+- Register tests stay next to the route: `src/app/api/auth/register/route.test.ts`. `src/app/api/auth/tsconfig.json` disables the Next TypeScript plugin so `@/` resolves there
+- Login/logout tests live at `src/lib/auth/login-route.test.ts` and `src/lib/auth/logout-route.test.ts` (same Next-plugin issue if colocated as `route.test.ts`)
 - Route tests mock user service, password, and session. Session tests use the real signer with `SESSION_SECRET`
 - No new migration. No deploy
 
-### Phase 4: Pages and gating - PLANNED
+### Phase 4: Pages and gating - COMPLETED
 
 **Objective**: A teacher can register or log in and land on the MCQs stub, then log out.
 
@@ -481,6 +550,8 @@ Keep page files as thin Server Components. Put interactive UI in client componen
 - `requireSessionRedirect returns null when there is a user id`
 - `redirectIfAuthenticated returns /mcqs when there is a user id`
 - `redirectIfAuthenticated returns null when there is no user id`
+- `landingRedirect returns /login when there is no user id`
+- `landingRedirect returns /mcqs when there is a user id`
 
 `src/components/auth/register-form.test.tsx`
 
@@ -515,10 +586,19 @@ Mock `fetch` and the Next.js router. Query by role and accessible name. Use `use
 - Stub MCQs page with logout
 
 **Phase complete when**:
-- [ ] `npm test` green (including guards + register/login/logout UI)
-- [ ] Pages exist and compose the tested components
+- [x] `npm test` green (including guards + register/login/logout UI)
+- [x] Pages exist and compose the tested components
 
-### Phase 5: Verify - PLANNED
+**Implementation notes (2026-08-27)**:
+- TDD: Phase 4 tests failed first (missing `auth-guards` and form modules). Full suite later **51 passed / 51**
+- UI is the official shadcn login/signup blocks (`src/components/auth/login-form.tsx`, `register-form.tsx`), adapted for username login, first/last name, username, and no Google
+- `/` is not a landing page: `src/app/page.tsx:5-7` redirects via `landingRedirect` (`src/lib/auth-guards.ts:9-11`) to `/login` or `/mcqs`
+- `/login` and `/register` are thin Server Components wrapping the client forms; signed-in users go to `/mcqs`
+- `/mcqs` (`src/app/mcqs/page.tsx:7-32`) is a stub with the teacher’s first name/username and `LogoutButton`. No MCQ CRUD
+- Session gating uses the guards plus `getSessionUserId()` (`src/lib/current-session.ts:6-11`)
+- No new migration. No deploy
+
+### Phase 5: Verify - COMPLETED
 
 **Objective**: The feature is done only when the full Vitest suite stays green, lint/build succeed, and the auth flow works in the browser.
 
@@ -538,8 +618,18 @@ Mock `fetch` and the Next.js router. Query by role and accessible name. Use `use
 - Auth flow verified in the browser
 
 **Phase complete when**:
-- [ ] `npm test`, `npm run lint`, and `npm run build` succeed
-- [ ] Browser pass of register, login, logout, and the gated stub
+- [x] `npm test` succeeds (51/51 on 2026-08-27)
+- [x] Browser pass of register, login, logout, and the gated stub (`npm run dev` at `localhost:3000`)
+- [ ] `npm run build` recorded in this session (OpenNext production build not re-run as part of this PRD update)
+- [x] `npm run lint` — last recorded run exited 0 with two existing unused-var warnings in login/logout handlers (not new)
+
+**Implementation notes (2026-08-27)**:
+- Product owner verified on local `npm run dev`: can open the login page, register, log in, and log out
+- `/` redirects unauthenticated users to `/login` (`307` `location: /login`); `/mcqs` without a session redirects to `/login`
+- `npm test` — 12 files, **51 passed / 51**
+- `npm run lint` — exit 0; warnings: `src/app/api/auth/login/handler.ts` unused `_passwordHash`; `src/app/api/auth/logout/handler.ts` unused `_request`
+- `npm run preview` (Workers runtime) was not required for the browser pass; D1 is available under `next dev` via `initOpenNextCloudflareForDev` (`next.config.ts:15-16`)
+- No new migration. No deploy
 
 ---
 
@@ -548,6 +638,7 @@ Mock `fetch` and the Next.js router. Query by role and accessible name. Use `use
 ### Key Files
 
 - `vitest.config.ts` — Vitest + jsdom + `@/` alias
+- `next.config.ts` — `initOpenNextCloudflareForDev()` so `next dev` can use D1 and `.dev.vars`
 - `wrangler.jsonc` — D1 binding `DB`
 - `migrations/` — `users` table
 - `.dev.vars` / `.dev.vars.example` — `SESSION_SECRET`
@@ -559,9 +650,11 @@ Mock `fetch` and the Next.js router. Query by role and accessible name. Use `use
 - `src/lib/password.test.ts` — Phase 2: hash / verify
 - `src/lib/session.ts` — signed cookie issue/verify/clear
 - `src/lib/session.test.ts` — Phase 3: cookie helpers
-- `src/lib/auth-guards.ts` — redirect decisions as plain functions
+- `src/lib/auth-guards.ts` — `requireSessionRedirect`, `redirectIfAuthenticated`, `landingRedirect`
 - `src/lib/auth-guards.test.ts` — Phase 4: session gating
-- `src/lib/db.ts` — obtain `env.DB` via `getCloudflareContext()`; the only place that talks to the binding
+- `src/lib/current-session.ts` — read `qm_session` via `cookies()`
+- `src/lib/cloudflare-env.ts` — load Cloudflare env and copy `SESSION_SECRET` onto `process.env`
+- `src/lib/db.ts` — obtain `env.DB` via `getCloudflareEnv()`; the only place that talks to the binding
 - `src/app/api/auth/register/route.ts` — register endpoint
 - `src/app/api/auth/register/handler.ts` — register POST handler (imported by tests)
 - `src/app/api/auth/register/route.test.ts` — Phase 3
@@ -575,7 +668,7 @@ Mock `fetch` and the Next.js router. Query by role and accessible name. Use `use
 - `src/components/auth/register-form.tsx` / `register-form.test.tsx` — Phase 4
 - `src/components/auth/login-form.tsx` / `login-form.test.tsx` — Phase 4
 - `src/components/auth/logout-button.tsx` / `logout-button.test.tsx` — Phase 4
-- `src/app/page.tsx` — landing
+- `src/app/page.tsx` — redirects `/` to `/login` or `/mcqs`
 - `src/app/register/page.tsx` — register page (composes the form)
 - `src/app/login/page.tsx` — login page (composes the form)
 - `src/app/mcqs/page.tsx` — authenticated stub
@@ -622,9 +715,9 @@ Register hashes, then calls `create`. Login calls `getByUsername`, then password
 Use the Web Crypto API (`crypto.subtle`) so no hashing package is added unless it proves necessary.
 
 - Algorithm: PBKDF2-SHA-256
-- Per-user random salt (at least 16 bytes)
-- Iteration count high enough for interactive login on Workers (document the chosen count in code)
-- Store as a single `password_hash` string, for example: `pbkdf2$iterations$salt$hash` (salt and hash hex or base64)
+- Per-user random salt (16 bytes, `SALT_BYTES`)
+- Iteration count: **100_000** (`PBKDF2_ITERATIONS` in `src/lib/password.ts:4`)
+- Store as `pbkdf2$iterations$salt$hash` with base64 salt and hash (`src/lib/password.ts:63-67`)
 - Compare in constant time
 - Never log passwords or hashes
 
@@ -632,22 +725,22 @@ Hashing happens in the register and login route handlers (or a helper they call)
 
 ### Session cookie
 
-- Name: `qm_session` (or similar; keep it boring)
-- Value: HMAC-signed payload `{ userId, exp }` using `SESSION_SECRET`
-- `httpOnly: true`, `path: /`, `sameSite: "lax"`, `secure` in production
-- Lifetime: 7 days is enough for this phase
-- Logout sets `Max-Age=0` / expired cookie
+- Name: `qm_session` (`src/lib/session.ts:4`)
+- Value: HMAC-SHA-256 signed `{ userId, exp }` using `SESSION_SECRET` (`src/lib/session.ts:59-69`)
+- `HttpOnly`, `Path=/`, `SameSite=Lax`, `Secure` only in production (`src/lib/session.ts:44-57`)
+- Lifetime: 7 days (`SESSION_MAX_AGE_SECONDS`, `src/lib/session.ts:5`)
+- Logout sets `Max-Age=0` (`src/lib/session.ts:111-113`)
 
 ### Accessing D1
 
 ```typescript
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getCloudflareEnv } from "@/lib/cloudflare-env";
 
-const { env } = await getCloudflareContext();
+const env = await getCloudflareEnv();
 const db = env.DB;
 ```
 
-Centralize this in `src/lib/db.ts`. Route handlers and the user service must not be imported into `'use client'` files.
+`getCloudflareEnv` (`src/lib/cloudflare-env.ts:4-10`) wraps `getCloudflareContext({ async: true })` and copies `SESSION_SECRET` onto `process.env`. `getDb()` (`src/lib/db.ts:4-9`) is the only module that returns the D1 binding. Route handlers and the user service must not be imported into `'use client'` files.
 
 Queries use numbered placeholders:
 
@@ -680,13 +773,14 @@ vi.mock("@opennextjs/cloudflare", () => ({
 
 Prefer mocking `src/lib/db.ts` over reconstructing the D1 prepared-statement chain. Route tests call exported `POST(request)` with a `Request`. Form tests mock `fetch` and `next/navigation`.
 
-### Dependencies to add
+### Dependencies added
 
-These are approved for this PRD:
+These were approved and installed for this PRD:
 
 | Package | Why |
 |---|---|
-| `zod` | Validate all route handler input |
+| `zod` | Validate route handler and service input |
+| `server-only` | Keep db, session, password, and user service off the client |
 | `vitest` | Unit-test runner |
 | `@vitejs/plugin-react` | Transform TSX in tests |
 | `@testing-library/react` | Render client components |
@@ -713,22 +807,24 @@ Do **not** add bcrypt, an auth framework, a session library, `react-hook-form`, 
 
 ## Acceptance Criteria
 
-- [ ] Vitest is installed and `npm test` / `npm run test:watch` run
-- [ ] Each implementation phase started with failing tests and ended with those tests green
-- [ ] A local D1 database exists, is bound as `DB`, and the `users` migration applies locally
-- [ ] `users` has a primary key, `first_name`, `last_name`, `username`, `email`, and `password_hash`
-- [ ] User service can create, update, and delete users, and can look up by id and username
-- [ ] `POST /api/auth/register` creates a row whose `password_hash` is not the plaintext password
-- [ ] `POST /api/auth/login` succeeds only when the submitted password hashes to the stored value
-- [ ] Successful register takes the teacher to `/mcqs`
-- [ ] Successful login takes the teacher to `/mcqs`
-- [ ] `/mcqs` is a stub (no MCQ CRUD) and shows a logout control
-- [ ] Logout clears the session and returns the teacher to `/login`
-- [ ] After logout, `/mcqs` redirects to `/login`
-- [ ] Duplicate username or email is rejected
-- [ ] Wrong password returns 401 with a generic message
-- [ ] API responses never include `password` or `password_hash`
-- [ ] `npm test`, `npm run lint`, and `npm run build` succeed
+- [x] Vitest is installed and `npm test` / `npm run test:watch` run
+- [x] Each implementation phase started with failing tests and ended with those tests green
+- [x] A local D1 database exists, is bound as `DB`, and the `users` migration applies locally
+- [x] `users` has a primary key, `first_name`, `last_name`, `username`, `email`, and `password_hash`
+- [x] User service can create, update, and delete users, and can look up by id and username
+- [x] `POST /api/auth/register` creates a row whose `password_hash` is not the plaintext password
+- [x] `POST /api/auth/login` succeeds only when the submitted password hashes to the stored value
+- [x] Successful register takes the teacher to `/mcqs`
+- [x] Successful login takes the teacher to `/mcqs`
+- [x] `/mcqs` is a stub (no MCQ CRUD) and shows a logout control
+- [x] Logout clears the session and returns the teacher to `/login`
+- [x] After logout, `/mcqs` redirects to `/login`
+- [x] Duplicate username or email is rejected
+- [x] Wrong password returns 401 with a generic message
+- [x] API responses never include `password` or `password_hash`
+- [x] `npm test` succeeds (51/51)
+- [x] `npm run lint` succeeds (exit 0; two pre-existing unused-var warnings)
+- [ ] `npm run build` not re-recorded in this PRD update
 
 ---
 
@@ -738,13 +834,13 @@ This phase is infrastructure. Success is that teachers can obtain and use a sess
 
 | Metric | Target | How Measured |
 |--------|--------|--------------|
-| Register → authenticated stub | 100% of valid registrations land on `/mcqs` with a session cookie | Manual browser pass |
-| Login → authenticated stub | 100% of valid logins land on `/mcqs` | Manual browser pass |
-| Logout ends the session | `/mcqs` after logout requires login again | Manual browser pass |
-| Password not stored in plaintext | Stored `password_hash` is not equal to the submitted password | Inspect local D1 row after register |
-| Duplicate identity blocked | Second register with same username or email returns 409 | Manual or curl |
-| Unit suite | 100% of committed Vitest tests green | `npm test` |
-| TDD discipline | Each phase's tests failed before implementation | Phase notes / git history of test-first commits |
+| Register → authenticated stub | 100% of valid registrations land on `/mcqs` with a session cookie | Manual browser pass — **verified 2026-08-27** |
+| Login → authenticated stub | 100% of valid logins land on `/mcqs` | Manual browser pass — **verified 2026-08-27** |
+| Logout ends the session | `/mcqs` after logout requires login again | Manual browser pass — **verified 2026-08-27** |
+| Password not stored in plaintext | Stored `password_hash` is not equal to the submitted password | Unit tests + server-side hash in register handler |
+| Duplicate identity blocked | Second register with same username or email returns 409 | Unit tests (`UniqueConstraintError` → 409) |
+| Unit suite | 100% of committed Vitest tests green | `npm test` — **51/51 on 2026-08-27** |
+| TDD discipline | Each phase's tests failed before implementation | Phase notes |
 
 ---
 
@@ -760,8 +856,8 @@ This phase is infrastructure. Success is that teachers can obtain and use a sess
 
 - `getCloudflareContext()` from `@opennextjs/cloudflare` — D1 binding access
 - shadcn/ui `button`, `card`, `field`, `input`, `label` — register/login forms
-- Zod (to be added) — request validation
-- Vitest (to be added in Phase 0) — unit tests; mock D1 and Cloudflare context
+- Zod — request and service validation (`zod` in `package.json`)
+- Vitest — unit tests; mock D1 and Cloudflare context (`vitest` in `package.json`)
 - `.dev.vars` `SESSION_SECRET` — signing session cookies
 
 ### Environment variables
@@ -825,15 +921,29 @@ Populate this section when bugs are found during implementation. Starter entries
 
 **Problem**: Registering a duplicate identity returns 500 instead of 409.
 **Cause**: D1 unique-constraint error was not mapped in the register handler.
-**Solution**: Catch the constraint failure in `POST /api/auth/register` and return 409.
-**Code Reference**: `src/app/api/auth/register/route.ts`
+**Solution**: Catch `UniqueConstraintError` in `POST /api/auth/register` and return 409 with the generic message.
+**Code Reference**: `src/app/api/auth/register/handler.ts:60-63`, `src/lib/services/users.ts:5-9`
 
 ### Logged in but `/mcqs` still redirects to login
 
 **Problem**: Cookie is set but the stub treats the user as anonymous.
-**Cause**: Cookie `path`/`secure` mismatch between `npm run dev` (HTTP) and production flags, or the session helper rejects the signature.
-**Solution**: Do not set `secure` on HTTP localhost. Verify `SESSION_SECRET` is loaded from `.dev.vars`.
-**Code Reference**: `src/lib/session.ts`
+**Cause**: Cookie `path`/`secure` mismatch between `npm run dev` (HTTP) and production flags, or the session helper rejects the signature, or `SESSION_SECRET` is on Cloudflare env but not `process.env`.
+**Solution**: Do not set `secure` on HTTP localhost. `getCloudflareEnv` copies `SESSION_SECRET` onto `process.env` before `readSessionUserId` runs.
+**Code Reference**: `src/lib/session.ts:44-57`, `src/lib/cloudflare-env.ts:4-10`, `src/lib/current-session.ts:6-11`
+
+### `Cannot find module '@/lib/...'` in `route.test.ts`
+
+**Problem**: Colocated App Router tests cannot resolve `@/` even though `src/lib` exists.
+**Cause**: The Next.js TypeScript plugin treats files under `src/app` as route modules and drops path aliases.
+**Solution**: Put handler logic in `handler.ts` and re-export from `route.ts`. For register tests, `src/app/api/auth/tsconfig.json` sets `"plugins": []`. Login/logout tests live under `src/lib/auth/`.
+**Code Reference**: `src/app/api/auth/register/route.ts:1`, `src/app/api/auth/tsconfig.json`, `src/lib/auth/login-route.test.ts`
+
+### PowerShell `curl` sends a broken JSON body (400 Invalid request body)
+
+**Problem**: Register/login curl from PowerShell returns 400 even with a valid JSON string.
+**Cause**: PowerShell `curl` is `Invoke-WebRequest`, and backtick-escaped JSON in `-d` is split or mangled.
+**Solution**: Use `curl.exe` and `--data-binary` from a file, e.g. `--data-binary "@$env:TEMP\register.json"`.
+**Code Reference**: `src/app/api/auth/register/handler.ts:31-36`
 
 ### `@/` imports fail in Vitest
 
@@ -875,6 +985,6 @@ When working with this PRD:
 ## Current Status
 
 **Last Updated**: 2026-08-27
-**Current Phase**: Phase 3 - Auth endpoints and session
-**Status**: COMPLETED — committing to `feature/login-logout`
-**Next Steps**: Start Phase 4 (pages and gating) with failing tests first when directed. Do not create migrations or deploy.
+**Current Phase**: Phase 5 - Verify
+**Status**: COMPLETED — identity feature implemented and verified locally (register, login, logout, gated `/mcqs`). `npm test` 51/51
+**Next Steps**: This PRD is closed. Do not create migrations or deploy. Next product work is the MCQ test bank, not more identity.
