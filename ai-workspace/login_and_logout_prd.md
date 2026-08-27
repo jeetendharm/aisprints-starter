@@ -348,7 +348,7 @@ These tests fail until the migration and binding exist. That is the intended red
 - `SESSION_SECRET` placeholder added to `.dev.vars.example`; a real value is in gitignored `.dev.vars`
 - `npm run cf-typegen` typed `env.DB` as `D1Database`
 
-### Phase 2: User service - PLANNED
+### Phase 2: User service - COMPLETED
 
 **Objective**: All user persistence goes through one server-only module.
 
@@ -389,8 +389,17 @@ These tests fail until the migration and binding exist. That is the intended red
 - Service is importable only from server code
 
 **Phase complete when**:
-- [ ] `npm test` green (including password + user service)
-- [ ] Service can create, update, delete, and look up by id and username against the mocked DB contract
+- [x] `npm test` green (including password + user service)
+- [x] Service can create, update, delete, and look up by id and username against the mocked DB contract
+
+**Implementation notes (2026-08-27)**:
+- TDD: Phase 2 tests failed first (missing `@/lib/password` and `@/lib/db`), then `npm test` passed 19/19
+- `src/lib/password.ts` — PBKDF2-SHA-256, 100_000 iterations, per-hash salt, stored as `pbkdf2$iterations$salt$hash`
+- `src/lib/db.ts` — `getDb()` via `getCloudflareContext().env.DB`
+- `src/lib/services/users.ts` — `userService.create | getById | getByUsername | update | delete`; `getByUsername` returns `UserRecord` with `passwordHash`; other methods return `PublicUser` without it
+- Duplicate username/email throws `UniqueConstraintError`
+- Added `zod` and `server-only`. Tests mock `server-only` and `src/lib/db.ts` (no live D1)
+- No new migration. No deploy
 
 ### Phase 3: Auth endpoints and session - PLANNED
 
@@ -852,7 +861,7 @@ When working with this PRD:
 
 ## Current Status
 
-**Last Updated**: 2026-08-24
-**Current Phase**: Phase 1 - D1 and users migration
-**Status**: COMPLETED — reviewed and committed on `feature/login-logout`
-**Next Steps**: Remote/production migration is owned by the user this session. Start Phase 2 (user service) with failing tests first when directed. Do not create further migrations or deploy.
+**Last Updated**: 2026-08-27
+**Current Phase**: Phase 2 - User service
+**Status**: COMPLETED — reviewed and committing to `feature/login-logout`
+**Next Steps**: Start Phase 3 (auth endpoints) with failing tests first when directed. Do not create migrations or deploy.

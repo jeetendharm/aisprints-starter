@@ -19,15 +19,14 @@
 		"enabled": true
 	},
 	/**
-	 * Local D1 binding. database_id is a placeholder until a remote database
-	 * is created with `npx wrangler d1 create quizmaker`. Migrations are
-	 * applied locally only.
+	 * D1 binding. database_id is the remote quizmaker database (APAC).
+	 * Apply migrations locally only unless asked to apply remotely.
 	 */
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "quizmaker",
-			"database_id": "00000000-0000-4000-8000-000000000001",
+			"database_id": "549fc6c8-2285-4a88-8984-b0d6ab50e684",
 			"migrations_dir": "./migrations"
 		}
 	]
