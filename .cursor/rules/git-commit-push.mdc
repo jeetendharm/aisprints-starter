@@ -1,0 +1,28 @@
+---
+description: Require explicit user approval before committing or pushing
+alwaysApply: true
+---
+
+# Commit and push approval
+
+Do not create a git commit or push to a remote unless the user has explicitly asked for that action in the current turn.
+
+## What counts as approval
+
+- The user says to commit, push, or commit and push the current work
+- Phrases such as "get this in", "land this", or "commit these changes" are approval for that commit (and push if they also asked to push)
+- Approval is one-shot. A later set of changes needs a new ask
+
+## After approval
+
+- Commit and push only to the **current branch**
+- Do not switch branches, create a PR, or push to `main` / `master` unless the user asked for that too
+- Never update git config
+- Never force-push to `main` / `master`
+- Do not include unrelated local files (for example a Windows-only `next.config.ts` tweak) unless the user included them
+
+## Examples
+
+- "Looks good, commit and push" → commit the reviewed work and `git push` the current branch
+- "Continue with Phase 4" → implement only; do not commit
+- A previous turn's "commit this" does not authorize committing new files added later
