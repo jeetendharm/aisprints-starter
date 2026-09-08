@@ -474,7 +474,7 @@ These tests fail until the migration exists. That is the intended red. Do not po
 - Applied **locally only** — 8 commands executed; status ✅. Never applied `--remote`
 - `npm test` — 13 files, **60 passed / 60** (51 auth + 9 schema)
 
-### Phase 2: MCQ and attempt services - PLANNED
+### Phase 2: MCQ and attempt services - COMPLETED
 
 **Objective:** All persistence for questions, choices, and attempts goes through server-only services.
 
@@ -514,8 +514,15 @@ These tests fail until the migration exists. That is the intended red. Do not po
 - Services importable only from server code
 
 **Phase complete when:**
-- [ ] `npm test` green
-- [ ] Services match the surfaces in Technical Implementation Details
+- [x] `npm test` green
+- [x] Services match the surfaces in Technical Implementation Details
+
+**Implementation notes (2026-09-08):**
+- TDD: service suites failed first (`Failed to resolve import "@/lib/services/mcqs"` and `attempts`), then `npm test` passed **75/75**
+- `src/lib/services/mcqs.ts` — `mcqService.list | getById | create | update | delete`; Zod validates 2–6 choices and exactly one correct; `create` uses `db.batch`; `update` keeps existing choice ids, inserts new ones, deletes omitted ones
+- `McqNotFoundError` and `InvalidMcqChoiceError` for missing questions and stolen choice ids
+- `src/lib/services/attempts.ts` — `attemptService.create | listByMcqAndUser`; `is_correct` stored as `0`/`1`, returned as boolean
+- Tests mock `src/lib/db.ts` (no live D1). No new migration. No deploy
 
 ### Phase 3: MCQ and attempt endpoints - PLANNED
 
@@ -667,10 +674,10 @@ Fill in real paths and line numbers as code is written. Planned layout:
 
 - `migrations/0002_create_mcq_tables.sql` — `mcqs`, `mcq_choices`, `mcq_attempts` (applied locally 2026-09-08)
 - `src/lib/mcq-schema.test.ts` — Phase 1: migration SQL contract (9 tests)
-- `src/lib/services/mcqs.ts` — list, getById, create, update, delete
-- `src/lib/services/mcqs.test.ts` — Phase 2
+- `src/lib/services/mcqs.ts` — list, getById, create, update, delete (`src/lib/services/mcqs.ts` exports `mcqService`, `McqNotFoundError`, `InvalidMcqChoiceError`)
+- `src/lib/services/mcqs.test.ts` — Phase 2 (12 tests, mocked D1)
 - `src/lib/services/attempts.ts` — create, listByMcqAndUser
-- `src/lib/services/attempts.test.ts` — Phase 2
+- `src/lib/services/attempts.test.ts` — Phase 2 (3 tests, mocked D1)
 - `src/app/api/mcqs/handler.ts` + `route.ts` — GET list, POST create
 - `src/app/api/mcqs/[id]/handler.ts` + `route.ts` — GET, PUT, DELETE
 - `src/app/api/mcqs/[id]/attempts/handler.ts` + `route.ts` — GET, POST
@@ -812,9 +819,9 @@ Do **not** add `react-hook-form`, Playwright, or `@cloudflare/vitest-pool-worker
 - [ ] Each implementation phase started with failing tests and ended with those tests green
 - [x] Local D1 has `mcqs`, `mcq_choices`, and `mcq_attempts` from a locally applied migration
 - [x] `mcqs` has `id`, `name`, `question`, `created_by`, `created_at`, and `updated_at` — no `description` column
-- [ ] `mcqService` can create, list, get, update, and delete questions with 2–6 choices
-- [ ] A question cannot be saved with fewer than 2 choices, more than 6, or without exactly one correct choice
-- [ ] `attemptService` records `choiceId` and a snapshot `isCorrect`
+- [x] `mcqService` can create, list, get, update, and delete questions with 2–6 choices
+- [x] A question cannot be saved with fewer than 2 choices, more than 6, or without exactly one correct choice
+- [x] `attemptService` records `choiceId` and a snapshot `isCorrect`
 - [ ] `GET/POST /api/mcqs` and `GET/PUT/DELETE /api/mcqs/[id]` require a session
 - [ ] `POST /api/mcqs/[id]/attempts` requires a session and rejects a choice that is not on that question
 - [ ] `/mcqs` shows a table of name + question, a Create question button, logout, and the signed-in teacher
@@ -987,6 +994,6 @@ When working with this PRD:
 ## Current Status
 
 **Last Updated:** 2026-09-08
-**Current Phase:** Phase 2 - MCQ and attempt services
-**Status:** Phase 1 COMPLETED. Schema tests went red (no `mcqs` table), then green after `migrations/0002_create_mcq_tables.sql` was applied locally. `npm test` 60/60. No remote migrate. No deploy.
-**Next Steps:** Begin Phase 2 TDD: write `src/lib/services/mcqs.test.ts` and `src/lib/services/attempts.test.ts`, confirm red, then implement the services
+**Current Phase:** Phase 3 - MCQ and attempt endpoints
+**Status:** Phase 2 COMPLETED. Service tests went red (missing modules), then green after `mcqService` and `attemptService`. `npm test` 75/75. Phase 1 is on `origin/feature/mcq_crud_branch`. No remote migrate. No deploy.
+**Next Steps:** Begin Phase 3 TDD: write handler tests under `src/lib/mcqs/`, confirm red, then implement the route handlers
