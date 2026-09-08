@@ -5,6 +5,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/mcqs/require-teacher";
 import { mcqService } from "@/lib/services/mcqs";
 
+export const dynamic = "force-dynamic";
+
 export default async function McqsPage() {
 	const user = await requireTeacher();
 	const mcqs = await mcqService.list();

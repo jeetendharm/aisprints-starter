@@ -649,7 +649,7 @@ Mock `fetch` and `next/navigation`. Use `userEvent`. Query by role and accessibl
 - shadcn added: `dropdown-menu`, `textarea`, `radio-group`. CLI wrote `import { cn } from "cn"`; those three files import `cn` from `@/lib/utils` instead
 - No new npm packages. No remote migrate. No deploy
 
-### Phase 5: Verify - PLANNED
+### Phase 5: Verify - COMPLETED
 
 **Objective:** The feature is done only when the full Vitest suite stays green, lint/build succeed, and the flow works in the browser.
 
@@ -677,10 +677,18 @@ Mock `fetch` and `next/navigation`. Use `userEvent`. Query by role and accessibl
 - Browser pass reported
 
 **Phase complete when:**
-- [ ] `npm test` succeeds
-- [ ] Browser pass of create, edit, preview/attempt, delete, cancel, and auth gating
-- [ ] `npm run lint` recorded
-- [ ] `npm run build` recorded
+- [x] `npm test` succeeds
+- [x] Browser pass of create, edit, preview/attempt, delete, cancel, and auth gating
+- [x] `npm run lint` recorded
+- [x] `npm run build` recorded
+
+**Implementation notes (2026-09-08):**
+- `npm test` — 23 files, **111 passed / 111** (includes `src/lib/mcqs/page-rendering.test.ts`)
+- `npm run lint` — exit 0; 3 unused-var warnings (login `_passwordHash`, logout `_request`, create-route `_question`). 0 errors
+- First `npm run build` failed prerendering `/mcqs/new`: Windows workerd `ERR_RUNTIME_FAILURE` / `std::terminate()` while generating static pages. Session-gated pages now export `dynamic = "force-dynamic"`. Rebuild succeeded; all app routes are `ƒ` Dynamic
+- Local `npm run dev` at `http://localhost:3000`: unauthenticated `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, `/mcqs/[id]/preview` return `307` to `/login`. Register → Question bank (stub copy gone) → create 2-choice MCQ appears in the table → API rejects 7 choices (400) and accepts 6 → preview HTML has no Correct/Incorrect before submit → wrong attempt `isCorrect: false`, right attempt `isCorrect: true` → edit name persists in the table → DELETE 204 removes the row → logout gates `/mcqs` → login returns to the bank. Cancel and Add-choice-at-6 are client-only; covered by Phase 4 component tests. No headed Chrome MCP in this session
+- `next.config.ts` still has an uncommitted Windows-only guard (`initOpenNextCloudflareForDev` in development only). Not part of this phase’s product change
+- No remote migrate. No deploy
 
 ---
 
@@ -709,10 +717,11 @@ Fill in real paths and line numbers as code is written. Planned layout:
 - `src/components/mcqs/mcq-preview.tsx` — attempt UI
 - `src/components/mcqs/mcq-preview.test.tsx` — Phase 4 (4 tests)
 - `src/lib/mcqs/require-teacher.ts` — page session gate (redirect `/login`)
-- `src/app/mcqs/page.tsx` — question bank (`max-w-5xl`, Create question, logout, `McqTable`)
-- `src/app/mcqs/new/page.tsx` — create
-- `src/app/mcqs/[id]/edit/page.tsx` — edit (missing → `/mcqs`)
-- `src/app/mcqs/[id]/preview/page.tsx` — preview (missing → `/mcqs`)
+- `src/app/mcqs/page.tsx` — question bank (`max-w-5xl`, Create question, logout, `McqTable`); `dynamic = "force-dynamic"`
+- `src/app/mcqs/new/page.tsx` — create; `dynamic = "force-dynamic"`
+- `src/app/mcqs/[id]/edit/page.tsx` — edit (missing → `/mcqs`); `dynamic = "force-dynamic"`
+- `src/app/mcqs/[id]/preview/page.tsx` — preview (missing → `/mcqs`); `dynamic = "force-dynamic"`
+- `src/lib/mcqs/page-rendering.test.ts` — Phase 5: session-gated pages must opt out of static prerender
 - `src/components/ui/dropdown-menu.tsx`, `textarea.tsx`, `radio-group.tsx` — added via shadcn CLI; `cn` import corrected to `@/lib/utils`
 
 ### Service surfaces
@@ -849,19 +858,19 @@ Do **not** add `react-hook-form`, Playwright, or `@cloudflare/vitest-pool-worker
 - [x] `attemptService` records `choiceId` and a snapshot `isCorrect`
 - [x] `GET/POST /api/mcqs` and `GET/PUT/DELETE /api/mcqs/[id]` require a session
 - [x] `POST /api/mcqs/[id]/attempts` requires a session and rejects a choice that is not on that question
-- [ ] `/mcqs` shows a table of name + question, a Create question button, logout, and the signed-in teacher
-- [ ] Create question opens `/mcqs/new` with Save and Cancel
-- [ ] Save on create persists the question and returns the teacher to `/mcqs`
+- [x] `/mcqs` shows a table of name + question, a Create question button, logout, and the signed-in teacher
+- [x] Create question opens `/mcqs/new` with Save and Cancel
+- [x] Save on create persists the question and returns the teacher to `/mcqs`
 - [x] Each row’s ellipsis menu has Edit, Preview, and Delete
-- [ ] Edit opens `/mcqs/[id]/edit` with existing values; Save updates the same row
+- [x] Edit opens `/mcqs/[id]/edit` with existing values; Save updates the same row
 - [x] Cancel on create/edit returns to `/mcqs` without writing
 - [x] Delete asks for confirmation, then removes the question
 - [x] Preview lets the teacher pick a choice and see Correct or Incorrect after submit
-- [ ] Unauthenticated visits to `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, and `/mcqs/[id]/preview` redirect to `/login`
+- [x] Unauthenticated visits to `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, and `/mcqs/[id]/preview` redirect to `/login`
 - [x] Existing register, login, and logout still work
 - [x] `npm test` succeeds
-- [ ] `npm run lint` succeeds
-- [ ] `npm run build` recorded
+- [x] `npm run lint` succeeds
+- [x] `npm run build` recorded
 
 ---
 
@@ -992,6 +1001,13 @@ Populate this section when bugs are found during implementation. Starter entries
 **Solution:** Assert `(button as HTMLButtonElement).disabled` and `aria-checked`. Do not add jest-dom unless asked.
 **Code Reference:** `src/components/mcqs/mcq-form.test.tsx`, `src/components/mcqs/mcq-preview.test.tsx`
 
+### `next build` crashes prerendering `/mcqs/new` on Windows
+
+**Problem:** `MiniflareCoreError [ERR_RUNTIME_FAILURE]` / `std::terminate()` while generating static pages.
+**Cause:** Session-gated Server Components call `getCloudflareContext()` during prerender, which starts workerd. Parallel static workers crash the workerd binary on Windows.
+**Solution:** Export `dynamic = "force-dynamic"` on `/`, `/login`, `/register`, and all `/mcqs` pages. Cover with `src/lib/mcqs/page-rendering.test.ts`.
+**Code Reference:** `src/app/mcqs/new/page.tsx`, `src/lib/mcqs/page-rendering.test.ts`
+
 ### Base UI dropdown menu is closed in jsdom after click
 
 **Problem:** Actions trigger is found, but `role="menuitem"` is missing.
@@ -1041,5 +1057,5 @@ When working with this PRD:
 
 **Last Updated:** 2026-09-08
 **Current Phase:** Phase 5 - Verify
-**Status:** Phase 4 COMPLETED. Table/form/preview tests went red (missing modules, then matcher/menu issues), then green after the question-bank UI. `npm test` 110/110. No remote migrate. No deploy.
-**Next Steps:** Phase 5 — `npm run lint`, `npm run build`, and a browser pass of create/edit/preview/delete/gating. Do not start that until asked.
+**Status:** Phase 5 COMPLETED. `npm test` 111/111. Lint exit 0 (3 existing unused-var warnings). `next build` green after session-gated pages were marked `force-dynamic`. Local `npm run dev` HTTP pass of register, question bank, create/edit/preview/delete, logout, and gating. No remote migrate. No deploy.
+**Next Steps:** Feature complete. Commit the Phase 5 prerender fix when asked. Do not deploy.

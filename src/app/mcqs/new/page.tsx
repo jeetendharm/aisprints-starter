@@ -3,6 +3,8 @@ import { McqForm } from "@/components/mcqs/mcq-form";
 import { buttonVariants } from "@/components/ui/button";
 import { requireTeacher } from "@/lib/mcqs/require-teacher";
 
+export const dynamic = "force-dynamic";
+
 export default async function NewMcqPage() {
 	await requireTeacher();
 

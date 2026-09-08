@@ -3,6 +3,8 @@ import { McqPreview } from "@/components/mcqs/mcq-preview";
 import { requireTeacher } from "@/lib/mcqs/require-teacher";
 import { mcqService } from "@/lib/services/mcqs";
 
+export const dynamic = "force-dynamic";
+
 export default async function PreviewMcqPage({ params }: { params: Promise<{ id: string }> }) {
 	await requireTeacher();
 	const { id } = await params;
