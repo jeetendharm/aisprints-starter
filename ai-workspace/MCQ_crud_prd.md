@@ -524,7 +524,7 @@ These tests fail until the migration exists. That is the intended red. Do not po
 - `src/lib/services/attempts.ts` — `attemptService.create | listByMcqAndUser`; `is_correct` stored as `0`/`1`, returned as boolean
 - Tests mock `src/lib/db.ts` (no live D1). No new migration. No deploy
 
-### Phase 3: MCQ and attempt endpoints - PLANNED
+### Phase 3: MCQ and attempt endpoints - COMPLETED
 
 **Objective:** Authenticated HTTP APIs for CRUD and attempts.
 
@@ -576,8 +576,16 @@ Call the exported handlers with a `Request`. Do not spin up Next.js.
 - JSON contracts as specified above
 
 **Phase complete when:**
-- [ ] `npm test` green
-- [ ] Status codes 200 / 201 / 204 / 400 / 401 / 404 / 500 match the contracts
+- [x] `npm test` green
+- [x] Status codes 200 / 201 / 204 / 400 / 401 / 404 / 500 match the contracts
+
+**Implementation notes (2026-09-08):**
+- TDD: 4 handler suites failed first (missing `@/app/api/mcqs/.../handler`), then `npm test` passed **94/94**
+- `src/lib/mcqs/http.ts` — `json()` and `requireApiSession()` (401 `"Authentication required."`)
+- `src/app/api/mcqs/handler.ts` — GET list 200 `{ mcqs }`; POST create 201 `{ mcq }` with `createdBy` from the session
+- `src/app/api/mcqs/[id]/handler.ts` — GET 200 `{ mcq }` / 404; PUT 200 / 400 stolen choice / 404; DELETE 204 / 404
+- `src/app/api/mcqs/[id]/attempts/handler.ts` — POST 201 `{ attempt }` with `isCorrect` from the current choice; GET 200 `{ attempts }` for the session user only
+- Thin `route.ts` re-exports. Tests live under `src/lib/mcqs/` and mock `getSessionUserId` plus the services. No new migration. No deploy
 
 ### Phase 4: Question bank UI - PLANNED
 
@@ -678,10 +686,11 @@ Fill in real paths and line numbers as code is written. Planned layout:
 - `src/lib/services/mcqs.test.ts` — Phase 2 (12 tests, mocked D1)
 - `src/lib/services/attempts.ts` — create, listByMcqAndUser
 - `src/lib/services/attempts.test.ts` — Phase 2 (3 tests, mocked D1)
+- `src/lib/mcqs/http.ts` — shared JSON helper and session gate for MCQ APIs
 - `src/app/api/mcqs/handler.ts` + `route.ts` — GET list, POST create
 - `src/app/api/mcqs/[id]/handler.ts` + `route.ts` — GET, PUT, DELETE
 - `src/app/api/mcqs/[id]/attempts/handler.ts` + `route.ts` — GET, POST
-- `src/lib/mcqs/*.test.ts` — Phase 3 handler tests
+- `src/lib/mcqs/list-route.test.ts`, `create-route.test.ts`, `item-route.test.ts`, `attempts-route.test.ts` — Phase 3 (19 tests)
 - `src/components/mcqs/mcq-table.tsx` — list + actions menu + delete dialog
 - `src/components/mcqs/mcq-form.tsx` — create/edit
 - `src/components/mcqs/mcq-preview.tsx` — attempt UI
@@ -822,8 +831,8 @@ Do **not** add `react-hook-form`, Playwright, or `@cloudflare/vitest-pool-worker
 - [x] `mcqService` can create, list, get, update, and delete questions with 2–6 choices
 - [x] A question cannot be saved with fewer than 2 choices, more than 6, or without exactly one correct choice
 - [x] `attemptService` records `choiceId` and a snapshot `isCorrect`
-- [ ] `GET/POST /api/mcqs` and `GET/PUT/DELETE /api/mcqs/[id]` require a session
-- [ ] `POST /api/mcqs/[id]/attempts` requires a session and rejects a choice that is not on that question
+- [x] `GET/POST /api/mcqs` and `GET/PUT/DELETE /api/mcqs/[id]` require a session
+- [x] `POST /api/mcqs/[id]/attempts` requires a session and rejects a choice that is not on that question
 - [ ] `/mcqs` shows a table of name + question, a Create question button, logout, and the signed-in teacher
 - [ ] Create question opens `/mcqs/new` with Save and Cancel
 - [ ] Save on create persists the question and returns the teacher to `/mcqs`
@@ -994,6 +1003,6 @@ When working with this PRD:
 ## Current Status
 
 **Last Updated:** 2026-09-08
-**Current Phase:** Phase 3 - MCQ and attempt endpoints
-**Status:** Phase 2 COMPLETED. Service tests went red (missing modules), then green after `mcqService` and `attemptService`. `npm test` 75/75. Phase 1 is on `origin/feature/mcq_crud_branch`. No remote migrate. No deploy.
-**Next Steps:** Begin Phase 3 TDD: write handler tests under `src/lib/mcqs/`, confirm red, then implement the route handlers
+**Current Phase:** Phase 4 - Question bank UI
+**Status:** Phase 3 COMPLETED. Handler tests went red (missing modules), then green after the MCQ and attempt APIs. `npm test` 94/94. No remote migrate. No deploy.
+**Next Steps:** Begin Phase 4 TDD: write table/form/preview component tests, confirm red, then replace the `/mcqs` stub
