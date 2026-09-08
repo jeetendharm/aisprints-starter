@@ -337,7 +337,7 @@ npx shadcn@latest add @shadcn/textarea
 npx shadcn@latest add @shadcn/radio-group
 ```
 
-If `dropdown-menu` produces no files for Base UI, use the documented equivalent (likely `@shadcn/menu`) and record the real file path in this PRD. Do not add `react-hook-form`. Do not hand-edit files under `src/components/ui/` except through the shadcn CLI.
+If `dropdown-menu` produces no files for Base UI, use the documented equivalent (likely `@shadcn/menu`) and record the real file path in this PRD. Do not add `react-hook-form`. Do not hand-edit files under `src/components/ui/` except through the shadcn CLI, unless the CLI writes a broken import (see Troubleshooting).
 
 Client forms POST/PUT/DELETE JSON with `fetch`, then `router.push` or `router.refresh`. Surface API `error` strings on the form. Query by role and accessible name in tests.
 
@@ -587,7 +587,7 @@ Call the exported handlers with a `Request`. Do not spin up Next.js.
 - `src/app/api/mcqs/[id]/attempts/handler.ts` — POST 201 `{ attempt }` with `isCorrect` from the current choice; GET 200 `{ attempts }` for the session user only
 - Thin `route.ts` re-exports. Tests live under `src/lib/mcqs/` and mock `getSessionUserId` plus the services. No new migration. No deploy
 
-### Phase 4: Question bank UI - PLANNED
+### Phase 4: Question bank UI - COMPLETED
 
 **Objective:** A teacher can list, create, edit, preview, attempt, and delete questions in the browser.
 
@@ -636,8 +636,18 @@ Mock `fetch` and `next/navigation`. Use `userEvent`. Query by role and accessibl
 - Stub copy removed from `/mcqs`
 
 **Phase complete when:**
-- [ ] `npm test` green (including table, form, preview)
-- [ ] Pages compose the tested components
+- [x] `npm test` green (including table, form, preview)
+- [x] Pages compose the tested components
+
+**Implementation notes (2026-09-08):**
+- TDD: table/form/preview suites failed first (missing modules, then jest-dom matchers / closed Base UI menu). Full suite then passed **110/110**
+- `src/components/mcqs/types.ts` — client-safe `Mcq` / `McqListItem` (do not import `src/lib/services/mcqs.ts` in client files)
+- `src/components/mcqs/mcq-table.tsx` — shadcn `Table` + `DropdownMenu` (`modal={false}`) + delete `Dialog`; Edit/Preview `router.push`; Delete `DELETE /api/mcqs/{id}` then `router.refresh()`
+- `src/components/mcqs/mcq-form.tsx` — create `POST /api/mcqs` (no `createdBy`); edit `PUT` with existing choice ids; Add/Remove disabled at 6 / 2
+- `src/components/mcqs/mcq-preview.tsx` — radios by choice body; Submit `POST /api/mcqs/{id}/attempts`; Correct/Incorrect only after the response
+- `src/lib/mcqs/require-teacher.ts` — session + `userService.getById`; used by `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, `/mcqs/[id]/preview`
+- shadcn added: `dropdown-menu`, `textarea`, `radio-group`. CLI wrote `import { cn } from "cn"`; those three files import `cn` from `@/lib/utils` instead
+- No new npm packages. No remote migrate. No deploy
 
 ### Phase 5: Verify - PLANNED
 
@@ -691,13 +701,19 @@ Fill in real paths and line numbers as code is written. Planned layout:
 - `src/app/api/mcqs/[id]/handler.ts` + `route.ts` — GET, PUT, DELETE
 - `src/app/api/mcqs/[id]/attempts/handler.ts` + `route.ts` — GET, POST
 - `src/lib/mcqs/list-route.test.ts`, `create-route.test.ts`, `item-route.test.ts`, `attempts-route.test.ts` — Phase 3 (19 tests)
+- `src/components/mcqs/types.ts` — client-safe MCQ types (no `server-only` service import)
 - `src/components/mcqs/mcq-table.tsx` — list + actions menu + delete dialog
+- `src/components/mcqs/mcq-table.test.tsx` — Phase 4 (5 tests)
 - `src/components/mcqs/mcq-form.tsx` — create/edit
+- `src/components/mcqs/mcq-form.test.tsx` — Phase 4 (7 tests)
 - `src/components/mcqs/mcq-preview.tsx` — attempt UI
-- `src/app/mcqs/page.tsx` — question bank (replaces stub)
+- `src/components/mcqs/mcq-preview.test.tsx` — Phase 4 (4 tests)
+- `src/lib/mcqs/require-teacher.ts` — page session gate (redirect `/login`)
+- `src/app/mcqs/page.tsx` — question bank (`max-w-5xl`, Create question, logout, `McqTable`)
 - `src/app/mcqs/new/page.tsx` — create
-- `src/app/mcqs/[id]/edit/page.tsx` — edit
-- `src/app/mcqs/[id]/preview/page.tsx` — preview
+- `src/app/mcqs/[id]/edit/page.tsx` — edit (missing → `/mcqs`)
+- `src/app/mcqs/[id]/preview/page.tsx` — preview (missing → `/mcqs`)
+- `src/components/ui/dropdown-menu.tsx`, `textarea.tsx`, `radio-group.tsx` — added via shadcn CLI; `cn` import corrected to `@/lib/utils`
 
 ### Service surfaces
 
@@ -825,7 +841,7 @@ Do **not** add `react-hook-form`, Playwright, or `@cloudflare/vitest-pool-worker
 
 ## Acceptance Criteria
 
-- [ ] Each implementation phase started with failing tests and ended with those tests green
+- [x] Each implementation phase started with failing tests and ended with those tests green
 - [x] Local D1 has `mcqs`, `mcq_choices`, and `mcq_attempts` from a locally applied migration
 - [x] `mcqs` has `id`, `name`, `question`, `created_by`, `created_at`, and `updated_at` — no `description` column
 - [x] `mcqService` can create, list, get, update, and delete questions with 2–6 choices
@@ -836,14 +852,14 @@ Do **not** add `react-hook-form`, Playwright, or `@cloudflare/vitest-pool-worker
 - [ ] `/mcqs` shows a table of name + question, a Create question button, logout, and the signed-in teacher
 - [ ] Create question opens `/mcqs/new` with Save and Cancel
 - [ ] Save on create persists the question and returns the teacher to `/mcqs`
-- [ ] Each row’s ellipsis menu has Edit, Preview, and Delete
+- [x] Each row’s ellipsis menu has Edit, Preview, and Delete
 - [ ] Edit opens `/mcqs/[id]/edit` with existing values; Save updates the same row
-- [ ] Cancel on create/edit returns to `/mcqs` without writing
-- [ ] Delete asks for confirmation, then removes the question
-- [ ] Preview lets the teacher pick a choice and see Correct or Incorrect after submit
+- [x] Cancel on create/edit returns to `/mcqs` without writing
+- [x] Delete asks for confirmation, then removes the question
+- [x] Preview lets the teacher pick a choice and see Correct or Incorrect after submit
 - [ ] Unauthenticated visits to `/mcqs`, `/mcqs/new`, `/mcqs/[id]/edit`, and `/mcqs/[id]/preview` redirect to `/login`
-- [ ] Existing register, login, and logout still work
-- [ ] `npm test` succeeds
+- [x] Existing register, login, and logout still work
+- [x] `npm test` succeeds
 - [ ] `npm run lint` succeeds
 - [ ] `npm run build` recorded
 
@@ -960,7 +976,28 @@ Populate this section when bugs are found during implementation. Starter entries
 **Problem:** The correct radio is pre-selected or styled.
 **Cause:** The preview component bound `isCorrect` from the loaded MCQ.
 **Solution:** Ignore `isCorrect` on choices until an attempt response exists. Cover with `mcq-preview.test.tsx`.
-**Code Reference:** `src/components/mcqs/mcq-preview.tsx` (when written)
+**Code Reference:** `src/components/mcqs/mcq-preview.tsx`
+
+### shadcn CLI writes `import { cn } from "cn"`
+
+**Problem:** `dropdown-menu`, `textarea`, and `radio-group` fail to resolve `cn`.
+**Cause:** The local shadcn generator emitted `"cn"` instead of `@/lib/utils`.
+**Solution:** Change those three files to `import { cn } from "@/lib/utils"`. Do not add an npm `cn` package.
+**Code Reference:** `src/components/ui/dropdown-menu.tsx`, `src/components/ui/textarea.tsx`, `src/components/ui/radio-group.tsx`
+
+### Vitest has no jest-dom matchers
+
+**Problem:** `toBeDisabled` / `toBeChecked` throw `Invalid Chai property`.
+**Cause:** This repo does not install `@testing-library/jest-dom`.
+**Solution:** Assert `(button as HTMLButtonElement).disabled` and `aria-checked`. Do not add jest-dom unless asked.
+**Code Reference:** `src/components/mcqs/mcq-form.test.tsx`, `src/components/mcqs/mcq-preview.test.tsx`
+
+### Base UI dropdown menu is closed in jsdom after click
+
+**Problem:** Actions trigger is found, but `role="menuitem"` is missing.
+**Cause:** Base UI Menu defaults to modal + pointer-events checks that jsdom fails after the first open.
+**Solution:** Set `modal={false}` on `DropdownMenu`. In tests, `userEvent.setup({ pointerEventsCheck: 0 })` and `findByRole("menuitem")` after the trigger click.
+**Code Reference:** `src/components/mcqs/mcq-table.tsx`, `src/components/mcqs/mcq-table.test.tsx`
 
 ### `@/` imports fail in Vitest
 
@@ -1003,6 +1040,6 @@ When working with this PRD:
 ## Current Status
 
 **Last Updated:** 2026-09-08
-**Current Phase:** Phase 4 - Question bank UI
-**Status:** Phase 3 COMPLETED. Handler tests went red (missing modules), then green after the MCQ and attempt APIs. `npm test` 94/94. No remote migrate. No deploy.
-**Next Steps:** Begin Phase 4 TDD: write table/form/preview component tests, confirm red, then replace the `/mcqs` stub
+**Current Phase:** Phase 5 - Verify
+**Status:** Phase 4 COMPLETED. Table/form/preview tests went red (missing modules, then matcher/menu issues), then green after the question-bank UI. `npm test` 110/110. No remote migrate. No deploy.
+**Next Steps:** Phase 5 — `npm run lint`, `npm run build`, and a browser pass of create/edit/preview/delete/gating. Do not start that until asked.
